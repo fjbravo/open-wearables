@@ -1,0 +1,118 @@
+# BYLab fork: daily upstream sync + GHCR image publish
+#
+# Owner: fjbravo. Source for context: fjbravo/bylab.io @
+# apps/open-wearables/README.md ("Image pipeline" section).
+#
+# Triggers:
+#   - schedule (daily 06:00 UTC): merge upstream/main → push → build → publish
+#   - workflow_dispatch: same
+#   - push to main (excluding bot's own merge commits): build → publish
+#
+# Why merge instead of fast-forward: this fork carries one BYLab-specific
+# commit (this workflow file). FF-only would erase it on first sync. Merge
+# preserves it; conflicts on `.github/workflows/bylab-*.yml` are extremely
+# unlikely since upstream uses different filenames.
+
+name: BYLab — sync upstream + publish images
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/workflows/bylab-sync-and-publish.yml'
+
+concurrency:
+  group: bylab-sync-and-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/fjbravo/open-wearables-platform
+  FRONTEND_IMAGE: ghcr.io/fjbravo/open-wearables-frontend
+
+jobs:
+  sync-upstream:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Merge upstream/main
+        id: merge
+        run: |
+          git remote add upstream https://github.com/the-momentum/open-wearables.git
+          git fetch upstream main
+          BEFORE=$(git rev-parse HEAD)
+          if git merge --no-edit upstream/main; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" = "$AFTER" ]; then
+              echo "merged=false" >> "$GITHUB_OUTPUT"
+              echo "Already up-to-date with upstream."
+            else
+              echo "merged=true" >> "$GITHUB_OUTPUT"
+              git push origin main
+            fi
+          else
+            echo "::error::Merge conflict syncing from upstream. Resolve manually."
+            exit 1
+          fi
+
+  build-and-push:
+    needs: sync-upstream
+    # Run if: (a) triggered by push to main, OR (b) sync ran (regardless of merged flag — we still want to ensure images exist)
+    if: always() && (github.event_name == 'push' || needs.sync-upstream.result == 'success' || needs.sync-upstream.result == 'skipped')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            image: ghcr.io/fjbravo/open-wearables-platform
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            build_args: ''
+          - name: frontend
+            image: ghcr.io/fjbravo/open-wearables-frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            build_args: |
+              VITE_API_URL=https://wearables-api.bylab.io
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ matrix.image }}:latest
+            ${{ matrix.image }}:main
+            ${{ matrix.image }}:sha-${{ github.sha }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=registry,ref=${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
