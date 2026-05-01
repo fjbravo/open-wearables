@@ -93,9 +93,14 @@ jobs:
             build_args: |
               VITE_API_URL=https://wearables-api.bylab.io
     steps:
+      # Build images from bylab/withings (the long-lived BYLab feature branch),
+      # NOT main. main mirrors upstream; the actual deployed image must include
+      # the BYLab Withings provider patches. The bylab-rebase-withings.yml
+      # workflow keeps bylab/withings rebased on top of main daily, so this
+      # branch is always main-current plus our patches.
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: bylab/withings
           fetch-depth: 1
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
