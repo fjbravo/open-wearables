@@ -15,6 +15,7 @@ class ProviderName(str, Enum):
     OURA = "oura"
     FITBIT = "fitbit"
     ULTRAHUMAN = "ultrahuman"
+    WITHINGS = "withings"
     UNKNOWN = "unknown"
     INTERNAL = "internal"
 
@@ -48,4 +49,5 @@ DEFAULT_PROVIDER_PRIORITY: dict[ProviderName, int] = {
     ProviderName.POLAR: 3,
     ProviderName.SUUNTO: 4,
     ProviderName.WHOOP: 5,
+    ProviderName.WITHINGS: 6,
 }

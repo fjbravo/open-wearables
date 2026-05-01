@@ -152,6 +152,13 @@ class Settings(BaseSettings):
     ultrahuman_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     ultrahuman_default_scope: str = "ring_data cgm_data profile"
 
+    # WITHINGS OAUTH SETTINGS
+    # Note: scope uses commas (Withings convention), unlike most other providers.
+    withings_client_id: str | None = None
+    withings_client_secret: SecretStr | None = None
+    withings_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
+    withings_default_scope: str = "user.info,user.metrics,user.activity,user.sleepevents"
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None

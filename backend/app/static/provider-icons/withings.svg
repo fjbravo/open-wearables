@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="32" viewBox="0 0 200 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Placeholder text logo. Replace with the official Withings mark before
+       merging upstream. -->
+  <text x="0" y="22" font-family="Helvetica, Arial, sans-serif" font-size="20"
+        font-weight="600" fill="black">Withings</text>
+</svg>
