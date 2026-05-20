@@ -24,14 +24,14 @@ export function MetricCard({
   value,
   label,
   sublabel,
-  sublabelColor = 'text-zinc-500',
+  sublabelColor = 'text-muted-foreground',
   isClickable = false,
   isSelected = false,
   glowColor = '',
   onClick,
 }: MetricCardProps) {
   const baseClasses =
-    'p-4 border rounded-lg bg-zinc-900/30 transition-all duration-200';
+    'p-4 border rounded-lg bg-card/30 transition-all duration-200';
 
   const body = (
     <>
@@ -40,8 +40,8 @@ export function MetricCard({
           <Icon className={`h-5 w-5 ${iconColor}`} />
         </div>
       </div>
-      <p className="text-2xl font-semibold text-white">{value}</p>
-      <p className="text-xs text-zinc-500 mt-1">
+      <p className="text-2xl font-semibold text-foreground">{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">
         {label}
         {sublabel ? (
           <span className={`ml-1.5 ${sublabelColor}`}>({sublabel})</span>
@@ -58,7 +58,7 @@ export function MetricCard({
           ${
             isSelected
               ? `border-zinc-600 ${glowColor}`
-              : 'border-zinc-800 hover:border-zinc-700 hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
+              : 'border-border/60 hover:border-border hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
           }
         `}
       >
@@ -67,5 +67,5 @@ export function MetricCard({
     );
   }
 
-  return <div className={`${baseClasses} border-zinc-800`}>{body}</div>;
+  return <div className={`${baseClasses} border-border/60`}>{body}</div>;
 }

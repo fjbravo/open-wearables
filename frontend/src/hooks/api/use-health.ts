@@ -45,6 +45,8 @@ export function useUserConnections(userId: string, enabled: boolean = true) {
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
     enabled: !!userId && enabled,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 
