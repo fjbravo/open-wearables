@@ -1455,3 +1455,113 @@ class TestBodyDailySummaryEndpoint:
         body = response.json()
         assert body["data"] == []
         assert body["pagination"]["has_more"] is False
+
+    def test_merges_readings_across_sources_per_day(self, client: TestClient, db: Session) -> None:
+        """Weight from a scale, BP from a cuff, and RHR from a watch should
+        all show up on the same day even though they come from different sources."""
+        user = UserFactory()
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS, source="withings")
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        bp_sys = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
+        bp_dia = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_diastolic()
+        rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+
+        day = datetime(2026, 5, 13, 7, 30, 0, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=withings, series_type=weight_type, value=Decimal("87.3"), recorded_at=day)
+        DataPointSeriesFactory(mapping=withings, series_type=bp_sys, value=Decimal("124"), recorded_at=day)
+        DataPointSeriesFactory(
+            mapping=withings, series_type=bp_dia, value=Decimal("68"), recorded_at=day + timedelta(seconds=1)
+        )
+        DataPointSeriesFactory(
+            mapping=apple, series_type=rhr_type, value=Decimal("51"), recorded_at=day + timedelta(hours=2)
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(day - timedelta(days=1), day + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["weight_kg"] == 87.3
+        assert row["blood_pressure"] is not None
+        assert row["blood_pressure"]["avg_systolic_mmhg"] == 124
+        assert row["blood_pressure"]["avg_diastolic_mmhg"] == 68
+        assert row["resting_heart_rate_bpm"] == 51
+
+    def test_higher_priority_source_wins_for_same_series(self, client: TestClient, db: Session) -> None:
+        """When two sources report the same series on the same day, the
+        highest-priority source wins."""
+        from app.models import ProviderPriority
+        from app.repositories.provider_priority_repository import ProviderPriorityRepository
+
+        ProviderPriorityRepository(ProviderPriority).bulk_update(
+            db, [(ProviderName.APPLE, 1), (ProviderName.WITHINGS, 6)]
+        )
+
+        user = UserFactory()
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS, source="withings")
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        day = datetime(2026, 5, 13, 7, 30, 0, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=withings, series_type=weight_type, value=Decimal("80.0"), recorded_at=day)
+        DataPointSeriesFactory(
+            mapping=apple, series_type=weight_type, value=Decimal("82.5"), recorded_at=day + timedelta(hours=1)
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(day - timedelta(days=1), day + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert len(rows) == 1
+        # Apple (priority 1) wins over Withings (priority 6)
+        assert rows[0]["weight_kg"] == 82.5
+
+    def test_source_metadata_reflects_highest_priority_contributor(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """When a day mixes sources, the row's source field is the
+        highest-priority contributor."""
+        from app.models import ProviderPriority
+        from app.repositories.provider_priority_repository import ProviderPriorityRepository
+
+        ProviderPriorityRepository(ProviderPriority).bulk_update(
+            db, [(ProviderName.APPLE, 1), (ProviderName.WITHINGS, 6)]
+        )
+
+        user = UserFactory()
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS, source="withings")
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+
+        day = datetime(2026, 5, 13, 7, 30, 0, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=withings, series_type=weight_type, value=Decimal("87.3"), recorded_at=day)
+        DataPointSeriesFactory(
+            mapping=apple, series_type=rhr_type, value=Decimal("51"), recorded_at=day + timedelta(hours=2)
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(day - timedelta(days=1), day + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert len(rows) == 1
+        assert rows[0]["source"]["provider"] == "apple"

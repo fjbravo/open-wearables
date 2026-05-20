@@ -168,6 +168,28 @@ class SummariesService:
 
         return filtered
 
+    def _source_priority_key(
+        self,
+        source: str | None,
+        device_model: str | None,
+        provider_order: dict[ProviderName, int],
+        device_type_order: dict,
+    ) -> tuple[int, int, str]:
+        """Build a sort key ranking a (source, device_model) pair. Lower is better."""
+        try:
+            provider = ProviderName(source) if source else ProviderName.UNKNOWN
+        except ValueError:
+            provider = ProviderName.UNKNOWN
+
+        provider_priority = provider_order.get(provider, 99)
+
+        device_type_priority = 99
+        if device_model:
+            device_type = infer_device_type_from_model(device_model)
+            device_type_priority = device_type_order.get(device_type, 99)
+
+        return (provider_priority, device_type_priority, device_model or "")
+
     def _get_user_max_hr(self, db_session: DbSession, user_id: UUID, reference_date: datetime) -> int:
         """Calculate user's max HR based on age.
 
@@ -624,8 +646,12 @@ class SummariesService:
     ) -> PaginatedResponse[BodyDailySummary]:
         """Get day-by-day body rollups for a user.
 
-        For each (date, source, device_model) the latest reading of the day is
-        reported for each tracked body series. Days with no readings are omitted.
+        For each date, the latest reading per series is reported. Different series
+        can come from different sources (scale → weight, cuff → BP, watch → RHR),
+        so readings are merged across sources per series. Within a single series,
+        the reading from the highest-priority source wins. The row's source field
+        reflects the highest-priority source that contributed any reading that day.
+        Days with no readings are omitted.
 
         Pagination uses the same compound (date, source, device_model) cursor as
         the activity-summaries endpoint.
@@ -638,32 +664,55 @@ class SummariesService:
             db_session, user_id, start_date, end_date, tracked_series
         )
 
-        # Group rows by (date, source, device_model)
-        grouped: dict[tuple[date, str | None, str | None], dict[SeriesType, tuple[float, datetime]]] = {}
+        provider_order = ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session)
+        device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
+
+        # For each (date, series_type), keep the reading from the highest-priority
+        # source. Body metrics naturally span multiple devices (scale → weight,
+        # cuff → BP, watch → RHR), so we merge across sources per series rather
+        # than picking one source for the whole day.
+        best_per_series: dict[
+            tuple[date, SeriesType],
+            tuple[float, datetime, str | None, str | None, tuple[int, int, str]],
+        ] = {}
+        # Track the best contributing source per date for response metadata.
+        best_source_per_date: dict[date, tuple[str | None, str | None, tuple[int, int, str]]] = {}
+
         for row in rows:
             try:
                 series_type = get_series_type_from_id(row["series_type_id"])
             except KeyError:
                 continue
-            key = (row["body_date"], row["source"], row["device_model"])
-            grouped.setdefault(key, {})[series_type] = (row["value"], row["recorded_at"])
+            source = row["source"]
+            device_model = row["device_model"]
+            priority_key = self._source_priority_key(source, device_model, provider_order, device_type_order)
 
-        # Flatten into priority-filterable result list
+            series_key = (row["body_date"], series_type)
+            existing = best_per_series.get(series_key)
+            if existing is None or priority_key < existing[4]:
+                best_per_series[series_key] = (row["value"], row["recorded_at"], source, device_model, priority_key)
+
+            best_src = best_source_per_date.get(row["body_date"])
+            if best_src is None or priority_key < best_src[2]:
+                best_source_per_date[row["body_date"]] = (source, device_model, priority_key)
+
+        # Group winning readings by date
+        readings_by_date: dict[date, dict[SeriesType, tuple[float, datetime]]] = {}
+        for (dt, series_type), (value, ts, _src, _dev, _pk) in best_per_series.items():
+            readings_by_date.setdefault(dt, {})[series_type] = (value, ts)
+
         results = [
             {
                 "body_date": dt,
-                "source": source,
-                "device_model": device,
+                "source": best_source_per_date[dt][0],
+                "device_model": best_source_per_date[dt][1],
                 "readings": readings,
             }
-            for (dt, source, device), readings in grouped.items()
+            for dt, readings in readings_by_date.items()
         ]
 
-        # Sort ascending by date (priority filter expects either order; we re-sort after)
+        # Sort ascending by date (matches activity/sleep ordering before paginating)
         results.sort(key=lambda r: (r["body_date"], r["source"] or "", r["device_model"] or ""))
-
-        # Pick the best source per date
-        results = self._filter_by_priority(db_session, user_id, results, date_key="body_date")
 
         # Apply sort_order
         if sort_order == "desc":
