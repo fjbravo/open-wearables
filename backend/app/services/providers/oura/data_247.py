@@ -148,7 +148,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily activity data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_activity", params)
 
@@ -302,7 +302,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily cardiovascular age data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_cardiovascular_age", params)
 
@@ -379,7 +379,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily readiness (recovery) data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_readiness", params)
 
@@ -528,7 +528,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch sleep data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
@@ -799,7 +799,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily sleep scores from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_sleep", params)
 
@@ -870,7 +870,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily SpO2 data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_spo2", params)
 
@@ -1119,7 +1119,7 @@ class Oura247Data(Base247DataTemplate):
         """Fetch daily Vo2 data from Oura API."""
         params = {
             "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%dT23:59:59"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/vO2_max", params)
 
